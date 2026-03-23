@@ -1,0 +1,11 @@
+Create a complete OpenClaw skill for the following description:
+
+Description: {{description}}
+Skill Name: {{skillName}}
+
+Please provide:
+1. SKILL.md content with proper description and usage instructions
+2. Any necessary implementation files (if applicable)
+3. Usage examples demonstrating the skill's functionality
+
+Format the response as a clear, structured outline that could be used to implement the skill.

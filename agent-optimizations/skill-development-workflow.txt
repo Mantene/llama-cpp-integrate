@@ -1,0 +1,1 @@
+Guidance for OpenClaw skill development workflow. Step-by-step process to design, implement, test, and document skills.

@@ -1,0 +1,12 @@
+Generate a complete MCP (Model Context Protocol) server template for:
+
+Description: {{description}}
+Server Name: {{serverName}}
+
+The MCP server should:
+1. Expose the described functionality as MCP tools/resources
+2. Include proper error handling and logging
+3. Follow MCP specification version 1.0
+4. Be ready to run with minimal configuration (just install deps and run)
+
+Provide the server implementation in TypeScript with clear comments.

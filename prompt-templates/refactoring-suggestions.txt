@@ -1,0 +1,9 @@
+Refactor the following code to improve readability and maintainability:
+
+```{language}
+{code}
+```
+
+Goals: {goals}
+
+Provide the refactored code and a brief explanation of changes.

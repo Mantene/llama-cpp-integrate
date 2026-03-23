@@ -1,0 +1,9 @@
+Explain the following code:
+
+```{language}
+{code}
+```
+
+Detail Level: {detailLevel}
+
+Provide a clear explanation appropriate for the specified detail level.

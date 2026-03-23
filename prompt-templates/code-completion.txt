@@ -1,0 +1,8 @@
+Complete the following {language} code:
+
+```{language}
+{code}
+```
+
+Please provide only the completed code, no explanations.
+```
