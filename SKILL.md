@@ -1,9 +1,9 @@
-# Llama-CPP Integration Skill
+# Local LLM Integration Skill
 
 Integrates with locally running llama.cpp server to provide AI-assisted code generation, skill creation, and MCP development capabilities.
 
 ## Description
-This skill connects to your local llama-server (default: http://localhost:8080) running DeepSeek-Coder-V2-Lite-Instruct-Q4_K_M-GGUF model to provide:
+This skill connects to your local llama-server (default: http://localhost:8080)  to provide:
 - Code completion and generation
 - Skill scaffolding from natural language
 - MCP server template generation
