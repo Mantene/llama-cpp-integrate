@@ -1,14 +1,14 @@
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { LlamaClient, LlamaCompletionOptions } from "./llama-client";
+import { getBackend } from "./backends/index.js";
+import type { CompletionOptions, LLMBackendOptions } from "./backends/base-adapter.js";
 
-// ── template loader ─────────────────────────────────────────────────
+const backend = getBackend();
 
-const OPTIM_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "agent-optimizations"
-);
+// ── agent-optimizations loader ─────────────────────────────────────
+
+const OPTIM_DIR = join(dirname(fileURLToPath(import.meta.url)), "agent-optimizations");
 
 function loadOptimTemplate(name: string): string {
   return readFileSync(join(OPTIM_DIR, name), "utf-8");
@@ -37,10 +37,6 @@ export type WorkflowType =
   | "debugging"
   | "explanation";
 
-/**
- * Map workflow types to the on-disk optimization template file.
- * Falls back to a generic prefix when no template matches.
- */
 const WORKFLOW_TEMPLATE_MAP: Record<WorkflowType, string | null> = {
   "code-generation": "code-quality-improvement.txt",
   "skill-creation": "skill-development-workflow.txt",
@@ -52,64 +48,45 @@ const WORKFLOW_TEMPLATE_MAP: Record<WorkflowType, string | null> = {
 // ── class ───────────────────────────────────────────────────────────
 
 export class LlamaAgentHelpers {
-  private client: LlamaClient;
   private opts: AgentHelperOptions;
 
-  constructor(client: LlamaClient, opts?: Partial<AgentHelperOptions>) {
-    this.client = client;
+  constructor(opts?: Partial<AgentHelperOptions>) {
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
   }
 
-  // ── context injection ───────────────────────────────────────────
-
   injectContext(prompt: string, context: Record<string, unknown>): string {
-    if (!this.opts.contextInjection || Object.keys(context).length === 0) {
-      return prompt;
-    }
+    if (!this.opts.contextInjection || Object.keys(context).length === 0) return prompt;
     return `Context:\n${JSON.stringify(context, null, 2)}\n\nTask:\n${prompt}`;
   }
 
-  // ── prompt optimization (loads agent-optimizations/ template) ───
-
   optimizePrompt(prompt: string, workflow: WorkflowType): string {
     if (!this.opts.promptOptimization) return prompt;
-
     const tplFile = WORKFLOW_TEMPLATE_MAP[workflow];
     if (!tplFile) return prompt;
-
     try {
       const prefix = loadOptimTemplate(tplFile).trim();
       return `${prefix}\n\n${prompt}`;
     } catch {
-      // template missing — fall through without prefix
       return prompt;
     }
   }
-
-  // ── token optimization ──────────────────────────────────────────
 
   optimizeTokens(prompt: string): string {
     if (!this.opts.tokenOptimization) return prompt;
     return prompt.replace(/[ \t]+/g, " ").trim();
   }
 
-  // ── high-level run ──────────────────────────────────────────────
-
-  /**
-   * Context-inject → optimise prompt → compress tokens → call model.
-   * Returns the trimmed completion text, or null on silent failure.
-   */
   async run(
     workflow: WorkflowType,
     prompt: string,
     context: Record<string, unknown> = {},
-    extra?: Partial<LlamaCompletionOptions>
+    extra?: Partial<CompletionOptions>
   ): Promise<string | null> {
     try {
       let p = this.injectContext(prompt, context);
       p = this.optimizePrompt(p, workflow);
       p = this.optimizeTokens(p);
-      const res = await this.client.complete({ prompt: p, ...extra });
+      const res = await backend.complete({ prompt: p, ...extra });
       return res.content.trim();
     } catch (err) {
       if (this.opts.silentErrors) {
@@ -120,9 +97,7 @@ export class LlamaAgentHelpers {
     }
   }
 
-  // ── health probe (useful for heartbeat checks) ──────────────────
-
   async isAvailable(): Promise<boolean> {
-    return this.client.healthCheck();
+    return backend.healthCheck();
   }
 }

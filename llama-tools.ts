@@ -1,17 +1,15 @@
-import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-import { createLlamaClient, LlamaCompletionOptions } from "./llama-client";
+import { getBackend } from "./backends/index.js";
+import type { CompletionOptions } from "./backends/base-adapter.js";
 
-const llamaClient = createLlamaClient();
+const backend = getBackend();
 
-// ── helpers ─────────────────────────────────────────────────────────
-
-const TEMPLATES_DIR = join(dirname(fileURLToPath(import.meta.url)), "prompt-templates");
-
-function loadTemplate(name: string): string {
-  return readFileSync(join(TEMPLATES_DIR, name), "utf-8");
+export interface ToolResult {
+  success: boolean;
+  result?: string;
+  error?: string;
 }
+
+// ── helper ─────────────────────────────────────────────────────────
 
 function fillTemplate(tpl: string, vars: Record<string, string>): string {
   let out = tpl;
@@ -21,11 +19,14 @@ function fillTemplate(tpl: string, vars: Record<string, string>): string {
   return out;
 }
 
-export interface ToolResult {
-  success: boolean;
-  result?: string;
-  error?: string;
-}
+// ── prompt templates (inline for now) ─────────────────────────────
+
+const TEMPLATES = {
+  skill: `Create a complete OpenClaw skill for:\nDescription: {{description}}\nSkill Name: {{name}}\n\nProvide SKILL.md, implementation files, and usage examples.`,
+  mcp: `Generate an MCP server template for:\nDescription: {{description}}\nServer Name: {{name}}\n\nProvide TypeScript implementation with proper MCP spec compliance.`,
+  explain: `Explain this code:\n{{code}}\n\nDetail: {{detailLevel}}`,
+  refactor: `Refactor for {{goals}}:\n{{code}}\n\nProvide refactored code and explanation.`,
+};
 
 // ── llama_complete ──────────────────────────────────────────────────
 export async function llama_complete(opts: {
@@ -35,19 +36,13 @@ export async function llama_complete(opts: {
   stop?: string[];
 }): Promise<ToolResult> {
   try {
-    const tpl = loadTemplate("code-completion.txt");
-    const prompt = fillTemplate(tpl, {
-      language: "auto",
-      code: opts.prompt,
-    });
-    const payload: LlamaCompletionOptions = {
-      prompt,
+    const result = await backend.complete({
+      prompt: opts.prompt,
       temperature: opts.temperature ?? 0.7,
-      n_predict: opts.max_tokens ?? 128,
-      stop: opts.stop ?? ["\n\n"],
-    };
-    const res = await llamaClient.complete(payload);
-    return { success: true, result: res.content.trim() };
+      max_tokens: opts.max_tokens ?? 128,
+      stop: opts.stop,
+    });
+    return { success: true, result: result.content };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -59,26 +54,10 @@ export async function llama_skill(opts: {
   name?: string;
 }): Promise<ToolResult> {
   try {
-    const skillName =
-      opts.name ||
-      opts.description
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-
-    const tpl = loadTemplate("skill-generation.txt");
-    const prompt = fillTemplate(tpl, {
-      description: opts.description,
-      skillName,
-    });
-
-    const res = await llamaClient.complete({
-      prompt,
-      temperature: 0.3,
-      n_predict: 1024,
-      stop: ["\n\n\n"],
-    });
-    return { success: true, result: res.content.trim() };
+    const name = opts.name || opts.description.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const prompt = fillTemplate(TEMPLATES.skill, { description: opts.description, name });
+    const result = await backend.complete({ prompt, temperature: 0.3, max_tokens: 1024 });
+    return { success: true, result: result.content };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -90,26 +69,10 @@ export async function llama_mcp(opts: {
   serverName?: string;
 }): Promise<ToolResult> {
   try {
-    const serverName =
-      opts.serverName ||
-      opts.description
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-
-    const tpl = loadTemplate("mcp-template.txt");
-    const prompt = fillTemplate(tpl, {
-      description: opts.description,
-      serverName,
-    });
-
-    const res = await llamaClient.complete({
-      prompt,
-      temperature: 0.4,
-      n_predict: 1500,
-      stop: ["\n\n\n"],
-    });
-    return { success: true, result: res.content.trim() };
+    const name = opts.serverName || opts.description.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const prompt = fillTemplate(TEMPLATES.mcp, { description: opts.description, name });
+    const result = await backend.complete({ prompt, temperature: 0.4, max_tokens: 1500 });
+    return { success: true, result: result.content };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -122,21 +85,12 @@ export async function llama_explain(opts: {
   detailLevel?: "brief" | "moderate" | "detailed";
 }): Promise<ToolResult> {
   try {
-    const lang = opts.language ?? "auto-detected";
-    const tpl = loadTemplate("code-explanation.txt");
-    const prompt = fillTemplate(tpl, {
-      language: lang,
-      code: opts.code,
-      detailLevel: opts.detailLevel ?? "moderate",
+    const prompt = fillTemplate(TEMPLATES.explain, {
+      code: `\`\`\`${opts.language || "auto"}\n${opts.code}\n\`\`\``,
+      detailLevel: opts.detailLevel || "moderate",
     });
-
-    const res = await llamaClient.complete({
-      prompt,
-      temperature: 0.2,
-      n_predict: 512,
-      stop: ["\n\n\n"],
-    });
-    return { success: true, result: res.content.trim() };
+    const result = await backend.complete({ prompt, temperature: 0.2, max_tokens: 512 });
+    return { success: true, result: result.content };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
@@ -149,22 +103,10 @@ export async function llama_refactor(opts: {
   goals?: string[];
 }): Promise<ToolResult> {
   try {
-    const lang = opts.language ?? "auto-detected";
-    const goals = (opts.goals ?? ["readability", "maintainability"]).join(", ");
-    const tpl = loadTemplate("refactoring-suggestions.txt");
-    const prompt = fillTemplate(tpl, {
-      language: lang,
-      code: opts.code,
-      goals,
-    });
-
-    const res = await llamaClient.complete({
-      prompt,
-      temperature: 0.3,
-      n_predict: 1024,
-      stop: ["\n\n\n"],
-    });
-    return { success: true, result: res.content.trim() };
+    const goals = (opts.goals || ["readability", "maintainability"]).join(", ");
+    const prompt = fillTemplate(TEMPLATES.refactor, { code: opts.code, goals });
+    const result = await backend.complete({ prompt, temperature: 0.3, max_tokens: 1024 });
+    return { success: true, result: result.content };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }

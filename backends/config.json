@@ -1,0 +1,6 @@
+{
+  "backend": "llama-cpp",
+  "baseUrl": "http://localhost:8080",
+  "timeoutMs": 30000,
+  "defaultModel": "deepseek-coder-v2-lite-instruct-q4_k_m"
+}
